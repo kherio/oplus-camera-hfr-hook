@@ -19,9 +19,9 @@ Anula `SurfaceUtils.checkHighSpeedSurfaceFormat` solo dentro del proceso `com.op
 No toca la ROM ni ninguna otra app.
 
 ## Estado
-Experimental. Tras saltarse esta comprobación, el framework valida otras cosas (tamaño y fps contra las
-configuraciones de alta velocidad) y el HAL puede rechazar la sesión. El log del módulo aparece en LSPosed
-con la etiqueta `[HfrHook]`.
+Funciona en un OnePlus 11 (crDroid/AlphaDroid, Android 17) con la cámara portada: la cámara lenta a 240 fps
+muestra la vista previa y graba. Hay que anular dos comprobaciones de AOSP, `checkHighSpeedSurfaceFormat` y
+`checkConstrainedHighSpeedSurfaces`. El log del módulo aparece con la etiqueta `[HfrHook]`.
 
 ## Compilar
 GitHub Actions (`.github/workflows/build.yml`) genera el APK como artefacto. En local: `gradle :app:assembleRelease`.
