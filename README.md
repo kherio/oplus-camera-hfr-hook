@@ -16,7 +16,7 @@ OxygenOS' framework is modified to allow it; AOSP's is not. The module turns
 `SurfaceUtils.checkHighSpeedSurfaceFormat` and `checkConstrainedHighSpeedSurfaces` into no-ops, only inside the
 `com.oplus.camera` process.
 
-### 2. Pinch-to-zoom with super-steady video (up to 2x)
+### 2. Pinch-to-zoom with super-steady video (up to 2x, capped at 1.99x)
 With super-steady video the app refuses to start the pinch gesture. The module:
 - makes `jg.b2.h()` return true while a pinch is being handled (`jg.b2$a.a` / `jg.b2$a.c`), and
 - makes `v6.f1.p(w6.c)` report a maximum zoom of 2.0 when the super-EIS flag is set (zoom bar limit).
