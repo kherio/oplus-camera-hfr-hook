@@ -25,6 +25,8 @@ public class HookEntry implements IXposedHookLoadPackage {
     };
     private static long lastN2;
     private static long lastScale;
+    private static long lastBegin;
+    private static final ThreadLocal<Boolean> IN_PINCH = new ThreadLocal<Boolean>();
 
     @Override
     public void handleLoadPackage(LoadPackageParam lpparam) {
@@ -99,7 +101,13 @@ public class HookEntry implements IXposedHookLoadPackage {
             Class<?> a = XposedHelpers.findClass("jg.b2$a", lpparam.classLoader);
             int n = XposedBridge.hookAllMethods(a, "c", new XC_MethodHook() {
                 @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    IN_PINCH.set(Boolean.FALSE);
+                }
+
+                @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
+                    IN_PINCH.set(Boolean.TRUE);
                     try {
                         long now = System.currentTimeMillis();
                         if (now - lastScale < 300) {
@@ -126,11 +134,22 @@ public class HookEntry implements IXposedHookLoadPackage {
             Class<?> a = XposedHelpers.findClass("jg.b2$a", lpparam.classLoader);
             int n = XposedBridge.hookAllMethods(a, "a", new XC_MethodHook() {
                 @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    IN_PINCH.set(Boolean.TRUE);
+                }
+
+                @Override
                 protected void afterHookedMethod(MethodHookParam param) {
+                    IN_PINCH.set(Boolean.FALSE);
                     try {
                         if (param.args == null || param.args.length != 1) {
                             return;
                         }
+                        long now = System.currentTimeMillis();
+                        if (now - lastBegin < 500) {
+                            return;
+                        }
+                        lastBegin = now;
                         Object b2 = XposedHelpers.getObjectField(param.thisObject, "c");
                         Object c0 = XposedHelpers.getObjectField(b2, "q0");
                         Object cfg = XposedHelpers.getObjectField(b2, "b0");
@@ -148,6 +167,22 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "hook jg.b2$a.a en " + n + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho jg.b2$a.a: " + t);
+        }
+
+        try {
+            Class<?> b2 = XposedHelpers.findClass("jg.b2", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(b2, "h", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (param.args != null && param.args.length == 0 && Boolean.TRUE.equals(IN_PINCH.get())
+                            && Boolean.FALSE.equals(param.getResult())) {
+                        param.setResult(Boolean.TRUE);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook jg.b2.h en " + n + " metodo(s) (fuerza true durante el pellizco)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho jg.b2.h: " + t);
         }
     }
 }
