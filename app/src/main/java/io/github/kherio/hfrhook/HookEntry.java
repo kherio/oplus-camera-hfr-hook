@@ -27,7 +27,7 @@ public class HookEntry implements IXposedHookLoadPackage {
     private static long lastScale;
     private static long lastBegin;
     private static long lastP;
-    private static final float EIS_MAX_ZOOM = 2.0f;
+    private static final float EIS_MAX_ZOOM = 1.99f;
     // true mientras el modo actual es ultraestabilizador (lo marca f1.p); el pellizco usa b2.k / b2.y como tope
     private static volatile boolean EIS_ACTIVE;
     private static float savedK = -1f;
