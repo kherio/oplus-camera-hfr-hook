@@ -121,5 +121,33 @@ public class HookEntry implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             Log.e(LT, "no engancho jg.b2$a.c: " + t);
         }
+
+        try {
+            Class<?> a = XposedHelpers.findClass("jg.b2$a", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(a, "a", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args == null || param.args.length != 1) {
+                            return;
+                        }
+                        Object b2 = XposedHelpers.getObjectField(param.thisObject, "c");
+                        Object c0 = XposedHelpers.getObjectField(b2, "q0");
+                        Object cfg = XposedHelpers.getObjectField(b2, "b0");
+                        Object view = XposedHelpers.getObjectField(b2, "M");
+                        Log.e(LT, "onScaleBegin result=" + param.getResult()
+                                + " b2.h=" + safe(b2, "h") + " b2.c0=" + safe(b2, "c0")
+                                + " c0.U2=" + safe(c0, "U2") + " c0.C2=" + safe(c0, "C2")
+                                + " view.enabled=" + safe(view, "isEnabled")
+                                + " cfg.W=" + (cfg == null ? "null" : String.valueOf(XposedHelpers.getBooleanField(cfg, "W"))));
+                    } catch (Throwable t) {
+                        Log.e(LT, "begin diag fallo: " + t);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook jg.b2$a.a en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho jg.b2$a.a: " + t);
+        }
     }
 }
