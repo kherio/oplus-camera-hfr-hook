@@ -26,6 +26,8 @@ public class HookEntry implements IXposedHookLoadPackage {
     private static long lastN2;
     private static long lastScale;
     private static long lastBegin;
+    private static long lastP;
+    private static final float EIS_MAX_ZOOM = 5.0f;
     private static final ThreadLocal<Boolean> IN_PINCH = new ThreadLocal<Boolean>();
 
     @Override
@@ -183,6 +185,39 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "hook jg.b2.h en " + n + " metodo(s) (fuerza true durante el pellizco)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho jg.b2.h: " + t);
+        }
+
+        try {
+            Class<?> f1 = XposedHelpers.findClass("v6.f1", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(f1, "p", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args == null || param.args.length != 1 || param.args[0] == null) {
+                            return;
+                        }
+                        Object r = param.getResult();
+                        if (!(r instanceof Float)) {
+                            return;
+                        }
+                        float max = (Float) r;
+                        boolean eis = XposedHelpers.getBooleanField(param.args[0], "Y");
+                        long now = System.currentTimeMillis();
+                        if (now - lastP > 1000) {
+                            lastP = now;
+                            Log.e(LT, "f1.p max=" + max + " Y(eis)=" + eis);
+                        }
+                        if (eis && max < EIS_MAX_ZOOM) {
+                            param.setResult(Float.valueOf(EIS_MAX_ZOOM));
+                        }
+                    } catch (Throwable t) {
+                        Log.e(LT, "f1.p diag fallo: " + t);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook v6.f1.p en " + n + " metodo(s) (zoom maximo con ultraestabilizador = " + EIS_MAX_ZOOM + ")");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho v6.f1.p: " + t);
         }
     }
 }
