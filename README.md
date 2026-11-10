@@ -23,6 +23,9 @@ Funciona en un OnePlus 11 (crDroid/AlphaDroid, Android 17) con la cámara portad
 muestra la vista previa y graba. Hay que anular dos comprobaciones de AOSP, `checkHighSpeedSurfaceFormat` y
 `checkConstrainedHighSpeedSurfaces`. El log del módulo aparece con la etiqueta `[HfrHook]`.
 
+## Descargar
+El APK está en [Releases](https://github.com/kherio/oplus-camera-hfr-hook/releases).
+
 ## Compilar
 GitHub Actions (`.github/workflows/build.yml`) genera el APK como artefacto. En local: `gradle :app:assembleRelease`.
 
