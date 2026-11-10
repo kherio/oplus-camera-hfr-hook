@@ -27,7 +27,56 @@ public class HookEntry implements IXposedHookLoadPackage {
     private static long lastScale;
     private static long lastBegin;
     private static long lastP;
-    private static final float EIS_MAX_ZOOM = 5.0f;
+    private static final float EIS_MAX_ZOOM = 2.0f;
+    // true mientras el modo actual es ultraestabilizador (lo marca f1.p); el pellizco usa b2.k / b2.y como tope
+    private static volatile boolean EIS_ACTIVE;
+    private static float savedK = -1f;
+    private static float savedY = -1f;
+
+    private static float readF(Object o, String name) throws Exception {
+        java.lang.reflect.Field f = o.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return ((Number) f.get(o)).floatValue();
+    }
+
+    private static void writeF(Object o, String name, float v) throws Exception {
+        java.lang.reflect.Field f = o.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        if (f.getType() == double.class) {
+            f.setDouble(o, v);
+        } else {
+            f.setFloat(o, v);
+        }
+    }
+
+    /** Con ultraestabilizador baja el tope del pellizco a EIS_MAX_ZOOM; fuera de ese modo lo devuelve. */
+    private static void capPinch(Object b2) {
+        try {
+            float k = readF(b2, "k");
+            float y = readF(b2, "y");
+            if (EIS_ACTIVE) {
+                if (k > EIS_MAX_ZOOM) {
+                    savedK = k;
+                    writeF(b2, "k", EIS_MAX_ZOOM);
+                }
+                if (y > EIS_MAX_ZOOM) {
+                    savedY = y;
+                    writeF(b2, "y", EIS_MAX_ZOOM);
+                }
+            } else {
+                if (savedK > 0 && k == EIS_MAX_ZOOM) {
+                    writeF(b2, "k", savedK);
+                }
+                if (savedY > 0 && y == EIS_MAX_ZOOM) {
+                    writeF(b2, "y", savedY);
+                }
+                savedK = -1f;
+                savedY = -1f;
+            }
+        } catch (Throwable t) {
+            Log.e(LT, "capPinch fallo: " + t);
+        }
+    }
     private static final ThreadLocal<Boolean> IN_PINCH = new ThreadLocal<Boolean>();
 
     @Override
@@ -110,6 +159,11 @@ public class HookEntry implements IXposedHookLoadPackage {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     IN_PINCH.set(Boolean.TRUE);
+                    try {
+                        capPinch(XposedHelpers.getObjectField(param.thisObject, "c"));
+                    } catch (Throwable t) {
+                        Log.e(LT, "cap fallo: " + t);
+                    }
                     try {
                         long now = System.currentTimeMillis();
                         if (now - lastScale < 300) {
@@ -202,6 +256,7 @@ public class HookEntry implements IXposedHookLoadPackage {
                         }
                         float max = (Float) r;
                         boolean eis = XposedHelpers.getBooleanField(param.args[0], "Y");
+                        EIS_ACTIVE = eis;
                         long now = System.currentTimeMillis();
                         if (now - lastP > 1000) {
                             lastP = now;
