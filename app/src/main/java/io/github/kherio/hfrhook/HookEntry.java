@@ -324,6 +324,47 @@ public class HookEntry implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             Log.e(LT, "no engancho el SDK de captura: " + t);
         }
+
+        // v0.12: de donde salen (o no) los metadatos de cada frame. Registra los callbacks de
+        // captura del consumidor y onPictureMetaArrived.
+        try {
+            Class<?> ci = XposedHelpers.findClass("com.oplus.ocs.camera.consumer.ConsumerImpl", lpparam.classLoader);
+            Class<?> cb = XposedHelpers.findClass("com.oplus.ocs.camera.consumer.ConsumerImpl$InnerCameraPictureCallbackAdapter", lpparam.classLoader);
+            XC_MethodHook logCb = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        StringBuilder sb = new StringBuilder("NIGHTDIAG2 ").append(param.method.getName());
+                        if (param.args != null) {
+                            for (Object a : param.args) {
+                                if (a instanceof android.hardware.camera2.CaptureRequest) {
+                                    Object tag = ((android.hardware.camera2.CaptureRequest) a).getTag();
+                                    if (tag != null) {
+                                        sb.append(" reqNum=").append(XposedHelpers.getObjectField(tag, "mRequestNum"));
+                                        sb.append(" useCapMeta=").append(XposedHelpers.getObjectField(tag, "mbUseCaptureMeta"));
+                                        sb.append(" raw=").append(XposedHelpers.getObjectField(tag, "mRawValue"));
+                                    } else {
+                                        sb.append(" tag=null");
+                                    }
+                                } else if (a instanceof Boolean || a instanceof Long || a instanceof Integer) {
+                                    sb.append(" arg=").append(a);
+                                }
+                            }
+                        }
+                        Log.e(LT, sb.toString());
+                    } catch (Throwable t) {
+                        Log.e(LT, "NIGHTDIAG2 fallo: " + t);
+                    }
+                }
+            };
+            int n = XposedBridge.hookAllMethods(ci, "onPictureMetaArrived", logCb).size();
+            for (String mn : new String[] {"onCaptureCompleted", "onPictureCaptureProgressed", "onCaptureFailed", "onCaptureStarted"}) {
+                n += XposedBridge.hookAllMethods(cb, mn, logCb).size();
+            }
+            Log.e(LT, "hook callbacks de captura en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho callbacks de captura: " + t);
+        }
     }
 
     private static Object kv(Object item, Class<?> par, String keyName) throws Throwable {
