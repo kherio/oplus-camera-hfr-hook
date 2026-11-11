@@ -455,6 +455,68 @@ public class HookEntry implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             Log.e(LT, "no engancho reenvio meta parcial: " + t);
         }
+        hookMergeDiag(lpparam.classLoader);
+    }
+
+    // v0.16: diagnostico del recuento de frames (merge identity) en APS.
+    private static void hookMergeDiag(ClassLoader cl) {
+        try {
+            final String AD = "com.oplus.ocs.camera.consumer.apsAdapter.adapter.ApsCaptureAdapterImpl";
+            Class<?> cap = XposedHelpers.findClass(AD, cl);
+            XposedBridge.hookAllMethods(cap, "countAddFrame", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        Log.e(LT, "NIGHTDIAG4 countAddFrame id=" + param.args[0] + " size=" + param.args[1]
+                                + " merge=" + param.args[2] + " fail=" + param.args[3]
+                                + " mapAntes=" + XposedHelpers.getObjectField(param.thisObject, "mAddFrameFinishMap"));
+                    } catch (Throwable t) {
+                        Log.e(LT, "NIGHTDIAG4 count fallo: " + t);
+                    }
+                }
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        Log.e(LT, "NIGHTDIAG4 countAddFrame -> " + param.getResult()
+                                + " mapDespues=" + XposedHelpers.getObjectField(param.thisObject, "mAddFrameFinishMap")
+                                + " captureFail=" + XposedHelpers.getObjectField(param.thisObject, "mbCaptureFail"));
+                    } catch (Throwable t) {
+                        Log.e(LT, "NIGHTDIAG4 count2 fallo: " + t);
+                    }
+                }
+            });
+            Class<?> ap = XposedHelpers.findClass("com.oplus.ocs.camera.consumer.ApsProcessor", cl);
+            XC_MethodHook idLog = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        String st = Log.getStackTraceString(new Throwable());
+                        String[] ls = st.split("\n");
+                        StringBuilder sb = new StringBuilder();
+                        for (int i = 1; i < ls.length && i < 5; i++) {
+                            sb.append(ls[i].trim()).append(" | ");
+                        }
+                        StringBuilder a = new StringBuilder();
+                        for (Object o : param.args) {
+                            if (o instanceof Number) {
+                                a.append(o).append(' ');
+                            }
+                        }
+                        Log.e(LT, "NIGHTDIAG4 " + param.method.getName() + " args=" + a
+                                + " identidadAntes=" + XposedHelpers.getObjectField(param.thisObject, "mCaptureMergeIdentity")
+                                + " cbNum=" + XposedHelpers.getObjectField(param.thisObject, "mCaptureStartedCallbackNum")
+                                + " via " + sb);
+                    } catch (Throwable t) {
+                        Log.e(LT, "NIGHTDIAG4 id fallo: " + t);
+                    }
+                }
+            };
+            int n = XposedBridge.hookAllMethods(ap, "onApsCaptureStarted", idLog).size();
+            n += XposedBridge.hookAllMethods(ap, "onPictureMetaStart", idLog).size();
+            Log.e(LT, "hook diagnostico merge identity en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho diagnostico merge: " + t);
+        }
     }
 
     private static void forward(Object outer, Object req, Object cr, long ts, long frame, ThreadLocal<Long> forceTs) {
