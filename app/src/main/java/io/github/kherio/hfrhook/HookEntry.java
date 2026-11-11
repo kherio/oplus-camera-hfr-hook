@@ -275,58 +275,65 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "no engancho v6.f1.p: " + t);
         }
 
-        // v0.10: el macro automatico se queda sin guardar la foto (la rafaga RAW de la
-        // ultra gran angular no llega nunca a APS). La app lee estas banderas con
-        // CameraConfig.<metodo>(String clave[, boolean]) y asume "true" si faltan, asi que
-        // las forzamos a false.
+        // v0.11: diagnostico de Noche (8 RAW que nunca llegan a APS). Registra por que
+        // CaptureImageCategory.isValid() devuelve false. Clases del SDK sin ofuscar.
         try {
-            Class<?> cc = XposedHelpers.findClass("com.oplus.camera.configure.CameraConfig", lpparam.classLoader);
-            java.util.HashSet<String> names = new java.util.HashSet<String>();
-            for (java.lang.reflect.Method m : cc.getDeclaredMethods()) {
-                Class<?>[] p = m.getParameterTypes();
-                if (m.getReturnType() == boolean.class && p.length >= 1 && p[0] == String.class
-                        && java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
-                    names.add(m.getName());
-                }
-            }
-            XC_MethodHook macroOff = new XC_MethodHook() {
+            final String AD = "com.oplus.ocs.camera.consumer.apsAdapter.adapter.";
+            final Class<?> cat = XposedHelpers.findClass(AD + "CaptureImageCategory", lpparam.classLoader);
+            final Class<?> par = XposedHelpers.findClass(AD + "ApsParameters", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(cat, "isValid", new XC_MethodHook() {
                 @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
+                protected void afterHookedMethod(MethodHookParam param) {
                     try {
-                        if (param.args == null || param.args.length < 1) {
-                            return;
+                        Object meta = XposedHelpers.getObjectField(param.thisObject, "mMetaItem");
+                        java.util.List<?> imgs = (java.util.List<?>) XposedHelpers.getObjectField(param.thisObject, "mImageItemList");
+                        StringBuilder sb = new StringBuilder("isValid=" + param.getResult());
+                        sb.append(" images=").append(imgs == null ? -1 : imgs.size());
+                        sb.append(" meta=").append(meta != null);
+                        if (imgs != null && imgs.size() > 0) {
+                            sb.append(" imgTs=").append(kv(imgs.get(0), par, "KEY_TIME_STAMP"));
+                            sb.append(" needMeta=").append(kv(imgs.get(0), par, "KEY_NEED_META_DATA"));
                         }
-                        Object k = param.args[0];
-                        if (k instanceof String && ((String) k).startsWith("com.oplus.feature.macro.mode.support")) {
-                            param.setResult(Boolean.FALSE);
+                        if (meta != null) {
+                            sb.append(" metaTs=").append(kv(meta, par, "KEY_TIME_STAMP"));
+                            sb.append(" merge=").append(kv(meta, par, "KEY_MERGE_NUMBER"));
+                            sb.append(" capStreams=").append(kv(meta, par, "KEY_CAPTURE_STREAM_NUMBER"));
+                            sb.append(" useTuning=").append(kv(meta, par, "KEY_USE_TUNING_DATA"));
                         }
+                        Log.e(LT, "NIGHTDIAG " + sb);
                     } catch (Throwable t) {
-                        Log.e(LT, "macro off fallo: " + t);
+                        Log.e(LT, "NIGHTDIAG fallo: " + t);
                     }
                 }
-            };
-            int n = 0;
-            for (String name : names) {
-                n += XposedBridge.hookAllMethods(cc, name, macroOff).size();
-            }
-            Log.e(LT, "hook CameraConfig (macro off) en " + n + " metodo(s)");
-        } catch (Throwable t) {
-            Log.e(LT, "no engancho CameraConfig: " + t);
-        }
-
-        // v0.10: r8.l.t2() es "isAutoMacroEnabled" del presentador del macro. Forzarlo a false
-        // evita que la camara cambie sola a la ultra gran angular (rafaga RAW sin guardar).
-        try {
-            Class<?> ml = XposedHelpers.findClass("r8.l", lpparam.classLoader);
-            int n = XposedBridge.hookAllMethods(ml, "t2", new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    param.setResult(Boolean.FALSE);
-                }
             }).size();
-            Log.e(LT, "hook r8.l.t2 (auto macro off) en " + n + " metodo(s)");
+            Log.e(LT, "hook CaptureImageCategory.isValid en " + n + " metodo(s)");
+            for (String mn : new String[] {"addMetadata", "addImage"}) {
+                final String name = mn;
+                XposedBridge.hookAllMethods(XposedHelpers.findClass(AD + "ApsCaptureAdapterImpl", lpparam.classLoader), mn,
+                        new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        try {
+                            Log.e(LT, "NIGHTDIAG " + name + " ts=" + kv(param.args[0], par, "KEY_TIME_STAMP"));
+                        } catch (Throwable t) {
+                            Log.e(LT, "NIGHTDIAG " + name + " fallo: " + t);
+                        }
+                    }
+                });
+            }
         } catch (Throwable t) {
-            Log.e(LT, "no engancho r8.l.t2: " + t);
+            Log.e(LT, "no engancho el SDK de captura: " + t);
         }
+    }
+
+    private static Object kv(Object item, Class<?> par, String keyName) throws Throwable {
+        java.lang.reflect.Field f = par.getField(keyName);
+        Object key = f.get(null);
+        for (java.lang.reflect.Method m : item.getClass().getMethods()) {
+            if (m.getName().equals("get") && m.getParameterTypes().length == 1) {
+                return m.invoke(item, key);
+            }
+        }
+        return "?";
     }
 }
