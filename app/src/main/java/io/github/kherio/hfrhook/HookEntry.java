@@ -389,23 +389,44 @@ public class HookEntry implements IXposedHookLoadPackage {
                         param.setResult(f);
                         return;
                     }
-                    // v0.18: clave ausente en el resultado parcial -> usar el valor del CaptureRequest
-                    // (SCALER_CROP_REGION, JPEG_ORIENTATION, LENS_APERTURE...) si existe con el mismo nombre.
+                    // v0.18/v0.19: clave ausente en el resultado parcial -> valor del CaptureRequest;
+                    // si tampoco esta, un valor por defecto para las claves que el APS necesita.
                     try {
                         String name = String.valueOf(param.args[0].getClass().getMethod("getName").invoke(param.args[0]));
                         Object req = param.thisObject.getClass().getMethod("getRequest").invoke(param.thisObject);
-                        if (req == null) return;
-                        for (Object k : (java.util.Set<?>) req.getClass().getMethod("getKeys").invoke(req)) {
-                            if (name.equals(String.valueOf(k.getClass().getMethod("getName").invoke(k)))) {
-                                Object v = req.getClass().getMethod("get", k.getClass().getSuperclass() == Object.class ? k.getClass() : k.getClass()).invoke(req, k);
-                                if (v != null) {
-                                    param.setResult(v);
-                                    if (reqLogged.add(name)) Log.e(LT, "NIGHTDIAG5 clave tomada del request: " + name + "=" + v);
+                        Object v = null;
+                        if (req != null) {
+                            java.util.Set<?> ks = (java.util.Set<?>) req.getClass().getMethod("getKeys").invoke(req);
+                            if (reqLogged.add("#keys")) {
+                                StringBuilder sb = new StringBuilder();
+                                for (Object k : ks) sb.append(k.getClass().getMethod("getName").invoke(k)).append(' ');
+                                Log.e(LT, "NIGHTDIAG5 claves del request: " + sb);
+                            }
+                            for (Object k : ks) {
+                                if (name.equals(String.valueOf(k.getClass().getMethod("getName").invoke(k)))) {
+                                    v = req.getClass().getMethod("get", k.getClass()).invoke(req, k);
+                                    break;
                                 }
-                                break;
                             }
                         }
-                    } catch (Throwable t) { /* sin valor: se deja null */ }
+                        String src = "request";
+                        if (v == null) {
+                            src = "defecto";
+                            if (name.equals("android.jpeg.orientation")) v = Integer.valueOf(0);
+                            else if (name.equals("android.flash.mode")) v = Integer.valueOf(0);
+                            else if (name.equals("android.sensor.sensitivity")) v = Integer.valueOf(100);
+                            else if (name.equals("android.lens.aperture")) v = Float.valueOf(1.8f);
+                            else if (name.equals("android.scaler.cropRegion"))
+                                v = Class.forName("android.graphics.Rect").getConstructor(int.class, int.class, int.class, int.class)
+                                        .newInstance(0, 0, 4096, 3072);
+                        }
+                        if (v != null) {
+                            param.setResult(v);
+                            if (reqLogged.add(name)) Log.e(LT, "NIGHTDIAG5 clave " + name + "=" + v + " (" + src + ")");
+                        }
+                    } catch (Throwable t) {
+                        if (reqLogged.add("#err")) Log.e(LT, "NIGHTDIAG5 fallo: " + t);
+                    }
                 }
             });
             XposedBridge.hookAllMethods(cb2, "onCaptureStarted", new XC_MethodHook() {
@@ -484,7 +505,7 @@ public class HookEntry implements IXposedHookLoadPackage {
                     }
                 }
             }).size();
-            Log.e(LT, "hook reenvio meta parcial (v0.18) en " + n2 + " metodo(s)");
+            Log.e(LT, "hook reenvio meta parcial (v0.19) en " + n2 + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho reenvio meta parcial: " + t);
         }
