@@ -313,5 +313,20 @@ public class HookEntry implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             Log.e(LT, "no engancho CameraConfig: " + t);
         }
+
+        // v0.10: r8.l.t2() es "isAutoMacroEnabled" del presentador del macro. Forzarlo a false
+        // evita que la camara cambie sola a la ultra gran angular (rafaga RAW sin guardar).
+        try {
+            Class<?> ml = XposedHelpers.findClass("r8.l", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(ml, "t2", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    param.setResult(Boolean.FALSE);
+                }
+            }).size();
+            Log.e(LT, "hook r8.l.t2 (auto macro off) en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho r8.l.t2: " + t);
+        }
     }
 }
