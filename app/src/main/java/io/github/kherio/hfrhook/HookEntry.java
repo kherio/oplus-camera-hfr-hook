@@ -365,6 +365,58 @@ public class HookEntry implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             Log.e(LT, "no engancho callbacks de captura: " + t);
         }
+
+        // v0.13 (experimento): el HAL no emite onCaptureCompleted ni el tag "partial meta" en las
+        // rafagas de Noche, asi que los metadatos nunca llegan al adaptador APS. Reenviamos el
+        // primer resultado parcial de cada frame a ConsumerImpl.onPictureMetaArrived(..., false).
+        // Solo para peticiones multiframe (mRequestNum > 1); la foto normal no se toca.
+        try {
+            final Class<?> ci2 = XposedHelpers.findClass("com.oplus.ocs.camera.consumer.ConsumerImpl", lpparam.classLoader);
+            Class<?> cb2 = XposedHelpers.findClass("com.oplus.ocs.camera.consumer.ConsumerImpl$InnerCameraPictureCallbackAdapter", lpparam.classLoader);
+            final Class<?> crCls = Class.forName("android.hardware.camera2.CaptureResult");
+            final Object tsKey = crCls.getField("SENSOR_TIMESTAMP").get(null);
+            int n2 = XposedBridge.hookAllMethods(cb2, "onPictureCaptureProgressed", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args == null || param.args.length < 2) {
+                            return;
+                        }
+                        Object req = param.args[0];
+                        Object tag = ((android.hardware.camera2.CaptureRequest) req).getTag();
+                        if (tag == null) {
+                            return;
+                        }
+                        int num = ((Integer) XposedHelpers.getObjectField(tag, "mRequestNum")).intValue();
+                        if (num <= 1) {
+                            return;
+                        }
+                        Object cr = XposedHelpers.callMethod(param.args[1], "getCaptureResult");
+                        if (cr == null) {
+                            return;
+                        }
+                        Object ts = null;
+                        for (java.lang.reflect.Method m : crCls.getMethods()) {
+                            if (m.getName().equals("get") && m.getParameterTypes().length == 1) {
+                                ts = m.invoke(cr, tsKey);
+                                break;
+                            }
+                        }
+                        if (ts == null) {
+                            return;
+                        }
+                        Object outer = XposedHelpers.getObjectField(param.thisObject, "this$0");
+                        Log.e(LT, "NIGHTDIAG3 reenvio meta parcial ts=" + ts + " reqNum=" + num);
+                        XposedHelpers.callMethod(outer, "onPictureMetaArrived", req, cr, Boolean.FALSE);
+                    } catch (Throwable t) {
+                        Log.e(LT, "NIGHTDIAG3 fallo: " + t);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook reenvio meta parcial en " + n2 + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho reenvio meta parcial: " + t);
+        }
     }
 
     private static Object kv(Object item, Class<?> par, String keyName) throws Throwable {
