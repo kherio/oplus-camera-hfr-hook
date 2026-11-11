@@ -379,14 +379,33 @@ public class HookEntry implements IXposedHookLoadPackage {
             final java.util.concurrent.ConcurrentHashMap<Long, Object[]> pending = new java.util.concurrent.ConcurrentHashMap<Long, Object[]>();
             final ThreadLocal<Long> forceTs = new ThreadLocal<Long>();
             final boolean[] keysLogged = new boolean[1];
+            final java.util.Set<String> reqLogged = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
             XposedBridge.hookAllMethods(crCls, "get", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     Long f = forceTs.get();
-                    if (f != null && param.args != null && param.args.length == 1 && param.args[0] == tsKey
-                            && param.getResult() == null) {
+                    if (f == null || param.args == null || param.args.length != 1 || param.getResult() != null) return;
+                    if (param.args[0] == tsKey) {
                         param.setResult(f);
+                        return;
                     }
+                    // v0.18: clave ausente en el resultado parcial -> usar el valor del CaptureRequest
+                    // (SCALER_CROP_REGION, JPEG_ORIENTATION, LENS_APERTURE...) si existe con el mismo nombre.
+                    try {
+                        String name = String.valueOf(param.args[0].getClass().getMethod("getName").invoke(param.args[0]));
+                        Object req = param.thisObject.getClass().getMethod("getRequest").invoke(param.thisObject);
+                        if (req == null) return;
+                        for (Object k : (java.util.Set<?>) req.getClass().getMethod("getKeys").invoke(req)) {
+                            if (name.equals(String.valueOf(k.getClass().getMethod("getName").invoke(k)))) {
+                                Object v = req.getClass().getMethod("get", k.getClass().getSuperclass() == Object.class ? k.getClass() : k.getClass()).invoke(req, k);
+                                if (v != null) {
+                                    param.setResult(v);
+                                    if (reqLogged.add(name)) Log.e(LT, "NIGHTDIAG5 clave tomada del request: " + name + "=" + v);
+                                }
+                                break;
+                            }
+                        }
+                    } catch (Throwable t) { /* sin valor: se deja null */ }
                 }
             });
             XposedBridge.hookAllMethods(cb2, "onCaptureStarted", new XC_MethodHook() {
@@ -465,7 +484,7 @@ public class HookEntry implements IXposedHookLoadPackage {
                     }
                 }
             }).size();
-            Log.e(LT, "hook reenvio meta parcial (v0.17) en " + n2 + " metodo(s)");
+            Log.e(LT, "hook reenvio meta parcial (v0.18) en " + n2 + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho reenvio meta parcial: " + t);
         }
