@@ -396,7 +396,7 @@ public class HookEntry implements IXposedHookLoadPackage {
                         Object req = param.thisObject.getClass().getMethod("getRequest").invoke(param.thisObject);
                         Object v = null;
                         if (req != null) {
-                            java.util.Set<?> ks = (java.util.Set<?>) req.getClass().getMethod("getKeys").invoke(req);
+                            java.util.Collection<?> ks = (java.util.Collection<?>) req.getClass().getMethod("getKeys").invoke(req);
                             if (reqLogged.add("#keys")) {
                                 StringBuilder sb = new StringBuilder();
                                 for (Object k : ks) sb.append(k.getClass().getMethod("getName").invoke(k)).append(' ');
@@ -505,7 +505,7 @@ public class HookEntry implements IXposedHookLoadPackage {
                     }
                 }
             }).size();
-            Log.e(LT, "hook reenvio meta parcial (v0.19) en " + n2 + " metodo(s)");
+            Log.e(LT, "hook reenvio meta parcial (v0.20) en " + n2 + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho reenvio meta parcial: " + t);
         }
