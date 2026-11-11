@@ -376,7 +376,9 @@ public class HookEntry implements IXposedHookLoadPackage {
             final Class<?> crCls = Class.forName("android.hardware.camera2.CaptureResult");
             final Object tsKey = crCls.getField("SENSOR_TIMESTAMP").get(null);
             final java.util.concurrent.ConcurrentHashMap<Long, Long> frameTs = new java.util.concurrent.ConcurrentHashMap<Long, Long>();
+            final java.util.concurrent.ConcurrentHashMap<Long, Object[]> pending = new java.util.concurrent.ConcurrentHashMap<Long, Object[]>();
             final ThreadLocal<Long> forceTs = new ThreadLocal<Long>();
+            final boolean[] keysLogged = new boolean[1];
             XposedBridge.hookAllMethods(crCls, "get", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
@@ -393,7 +395,13 @@ public class HookEntry implements IXposedHookLoadPackage {
                     try {
                         if (param.args != null && param.args.length >= 3
                                 && param.args[1] instanceof Number && param.args[2] instanceof Number) {
-                            frameTs.put(((Number) param.args[2]).longValue(), ((Number) param.args[1]).longValue());
+                            long ts = ((Number) param.args[1]).longValue();
+                            long frame = ((Number) param.args[2]).longValue();
+                            frameTs.put(frame, ts);
+                            Object[] p = pending.remove(frame);
+                            if (p != null) {
+                                forward(p[0], p[1], p[2], ts, frame, forceTs);
+                            }
                         }
                     } catch (Throwable t) {
                         Log.e(LT, "NIGHTDIAG3 started fallo: " + t);
@@ -422,33 +430,42 @@ public class HookEntry implements IXposedHookLoadPackage {
                             return;
                         }
                         long frame = ((Number) XposedHelpers.callMethod(cr, "getFrameNumber")).longValue();
-                        Long mapTs = frameTs.get(frame);
-                        Object nKeys = "?";
-                        try {
-                            nKeys = ((java.util.List<?>) XposedHelpers.callMethod(cr, "getKeys")).size();
-                        } catch (Throwable t) {
-                            // sin lista de claves
-                        }
-                        Log.e(LT, "NIGHTDIAG3 parcial frame=" + frame + " mapTs=" + mapTs + " keys=" + nKeys);
-                        if (mapTs == null) {
-                            return;
+                        if (!keysLogged[0]) {
+                            keysLogged[0] = true;
+                            StringBuilder sb = new StringBuilder("NIGHTDIAG3 claves:");
+                            for (Object k : (java.util.List<?>) XposedHelpers.callMethod(cr, "getKeys")) {
+                                sb.append(' ').append(XposedHelpers.callMethod(k, "getName"));
+                            }
+                            Log.e(LT, sb.toString());
                         }
                         Object outer = XposedHelpers.getObjectField(param.thisObject, "this$0");
-                        forceTs.set(mapTs);
-                        try {
-                            XposedHelpers.callMethod(outer, "onPictureMetaArrived", req, cr, Boolean.FALSE);
-                        } finally {
-                            forceTs.remove();
+                        Long mapTs = frameTs.get(frame);
+                        if (mapTs != null) {
+                            forward(outer, req, cr, mapTs, frame, forceTs);
+                        } else {
+                            pending.put(frame, new Object[] {outer, req, cr});
+                            Log.e(LT, "NIGHTDIAG3 parcial en espera frame=" + frame);
                         }
-                        Log.e(LT, "NIGHTDIAG3 reenviado frame=" + frame + " ts=" + mapTs);
                     } catch (Throwable t) {
                         Log.e(LT, "NIGHTDIAG3 fallo: " + t);
                     }
                 }
             }).size();
-            Log.e(LT, "hook reenvio meta parcial (v0.14) en " + n2 + " metodo(s)");
+            Log.e(LT, "hook reenvio meta parcial (v0.15) en " + n2 + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho reenvio meta parcial: " + t);
+        }
+    }
+
+    private static void forward(Object outer, Object req, Object cr, long ts, long frame, ThreadLocal<Long> forceTs) {
+        forceTs.set(Long.valueOf(ts));
+        try {
+            XposedHelpers.callMethod(outer, "onPictureMetaArrived", req, cr, Boolean.FALSE);
+            Log.e(LT, "NIGHTDIAG3 reenviado frame=" + frame + " ts=" + ts);
+        } catch (Throwable t) {
+            Log.e(LT, "NIGHTDIAG3 reenvio fallo frame=" + frame + ": " + t);
+        } finally {
+            forceTs.remove();
         }
     }
 
