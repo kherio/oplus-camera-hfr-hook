@@ -366,15 +366,40 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "no engancho callbacks de captura: " + t);
         }
 
-        // v0.13 (experimento): el HAL no emite onCaptureCompleted ni el tag "partial meta" en las
-        // rafagas de Noche, asi que los metadatos nunca llegan al adaptador APS. Reenviamos el
-        // primer resultado parcial de cada frame a ConsumerImpl.onPictureMetaArrived(..., false).
-        // Solo para peticiones multiframe (mRequestNum > 1); la foto normal no se toca.
+        // v0.14 (experimento): el resultado parcial del HAL no trae SENSOR_TIMESTAMP. Guardamos
+        // frame->timestamp desde onCaptureStarted, y al llegar el resultado parcial de ese frame
+        // lo reenviamos a ConsumerImpl.onPictureMetaArrived(..., false) inyectando el timestamp
+        // (CaptureResult.get(SENSOR_TIMESTAMP) devuelve el guardado mientras dura la llamada).
+        // Solo para peticiones multiframe (mRequestNum > 1).
         try {
-            final Class<?> ci2 = XposedHelpers.findClass("com.oplus.ocs.camera.consumer.ConsumerImpl", lpparam.classLoader);
             Class<?> cb2 = XposedHelpers.findClass("com.oplus.ocs.camera.consumer.ConsumerImpl$InnerCameraPictureCallbackAdapter", lpparam.classLoader);
             final Class<?> crCls = Class.forName("android.hardware.camera2.CaptureResult");
             final Object tsKey = crCls.getField("SENSOR_TIMESTAMP").get(null);
+            final java.util.concurrent.ConcurrentHashMap<Long, Long> frameTs = new java.util.concurrent.ConcurrentHashMap<Long, Long>();
+            final ThreadLocal<Long> forceTs = new ThreadLocal<Long>();
+            XposedBridge.hookAllMethods(crCls, "get", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    Long f = forceTs.get();
+                    if (f != null && param.args != null && param.args.length == 1 && param.args[0] == tsKey
+                            && param.getResult() == null) {
+                        param.setResult(f);
+                    }
+                }
+            });
+            XposedBridge.hookAllMethods(cb2, "onCaptureStarted", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args != null && param.args.length >= 3
+                                && param.args[1] instanceof Number && param.args[2] instanceof Number) {
+                            frameTs.put(((Number) param.args[2]).longValue(), ((Number) param.args[1]).longValue());
+                        }
+                    } catch (Throwable t) {
+                        Log.e(LT, "NIGHTDIAG3 started fallo: " + t);
+                    }
+                }
+            });
             int n2 = XposedBridge.hookAllMethods(cb2, "onPictureCaptureProgressed", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
@@ -393,27 +418,35 @@ public class HookEntry implements IXposedHookLoadPackage {
                         }
                         Object cr = XposedHelpers.callMethod(param.args[1], "getCaptureResult");
                         if (cr == null) {
+                            Log.e(LT, "NIGHTDIAG3 cr=null");
                             return;
                         }
-                        Object ts = null;
-                        for (java.lang.reflect.Method m : crCls.getMethods()) {
-                            if (m.getName().equals("get") && m.getParameterTypes().length == 1) {
-                                ts = m.invoke(cr, tsKey);
-                                break;
-                            }
+                        long frame = ((Number) XposedHelpers.callMethod(cr, "getFrameNumber")).longValue();
+                        Long mapTs = frameTs.get(frame);
+                        Object nKeys = "?";
+                        try {
+                            nKeys = ((java.util.List<?>) XposedHelpers.callMethod(cr, "getKeys")).size();
+                        } catch (Throwable t) {
+                            // sin lista de claves
                         }
-                        if (ts == null) {
+                        Log.e(LT, "NIGHTDIAG3 parcial frame=" + frame + " mapTs=" + mapTs + " keys=" + nKeys);
+                        if (mapTs == null) {
                             return;
                         }
                         Object outer = XposedHelpers.getObjectField(param.thisObject, "this$0");
-                        Log.e(LT, "NIGHTDIAG3 reenvio meta parcial ts=" + ts + " reqNum=" + num);
-                        XposedHelpers.callMethod(outer, "onPictureMetaArrived", req, cr, Boolean.FALSE);
+                        forceTs.set(mapTs);
+                        try {
+                            XposedHelpers.callMethod(outer, "onPictureMetaArrived", req, cr, Boolean.FALSE);
+                        } finally {
+                            forceTs.remove();
+                        }
+                        Log.e(LT, "NIGHTDIAG3 reenviado frame=" + frame + " ts=" + mapTs);
                     } catch (Throwable t) {
                         Log.e(LT, "NIGHTDIAG3 fallo: " + t);
                     }
                 }
             }).size();
-            Log.e(LT, "hook reenvio meta parcial en " + n2 + " metodo(s)");
+            Log.e(LT, "hook reenvio meta parcial (v0.14) en " + n2 + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho reenvio meta parcial: " + t);
         }
