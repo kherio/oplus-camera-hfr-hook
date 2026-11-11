@@ -281,26 +281,33 @@ public class HookEntry implements IXposedHookLoadPackage {
         // las forzamos a false.
         try {
             Class<?> cc = XposedHelpers.findClass("com.oplus.camera.configure.CameraConfig", lpparam.classLoader);
-            int n = 0;
+            java.util.HashSet<String> names = new java.util.HashSet<String>();
             for (java.lang.reflect.Method m : cc.getDeclaredMethods()) {
                 Class<?>[] p = m.getParameterTypes();
                 if (m.getReturnType() == boolean.class && p.length >= 1 && p[0] == String.class
                         && java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
-                    XposedBridge.hookMethod(m, new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            try {
-                                Object k = param.args[0];
-                                if (k instanceof String && ((String) k).startsWith("com.oplus.feature.macro.mode.support")) {
-                                    param.setResult(Boolean.FALSE);
-                                }
-                            } catch (Throwable t) {
-                                Log.e(LT, "macro off fallo: " + t);
-                            }
-                        }
-                    });
-                    n++;
+                    names.add(m.getName());
                 }
+            }
+            XC_MethodHook macroOff = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args == null || param.args.length < 1) {
+                            return;
+                        }
+                        Object k = param.args[0];
+                        if (k instanceof String && ((String) k).startsWith("com.oplus.feature.macro.mode.support")) {
+                            param.setResult(Boolean.FALSE);
+                        }
+                    } catch (Throwable t) {
+                        Log.e(LT, "macro off fallo: " + t);
+                    }
+                }
+            };
+            int n = 0;
+            for (String name : names) {
+                n += XposedBridge.hookAllMethods(cc, name, macroOff).size();
             }
             Log.e(LT, "hook CameraConfig (macro off) en " + n + " metodo(s)");
         } catch (Throwable t) {
