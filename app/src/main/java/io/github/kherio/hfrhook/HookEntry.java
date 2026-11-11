@@ -395,16 +395,30 @@ public class HookEntry implements IXposedHookLoadPackage {
                     try {
                         if (param.args != null && param.args.length >= 3
                                 && param.args[1] instanceof Number && param.args[2] instanceof Number) {
+                            frameTs.put(((Number) param.args[2]).longValue(), ((Number) param.args[1]).longValue());
+                        }
+                    } catch (Throwable t) {
+                        Log.e(LT, "NIGHTDIAG3 started fallo: " + t);
+                    }
+                }
+
+                // v0.17: el reenvio va DESPUES del onCaptureStarted original, porque ahi
+                // ApsProcessor.onPictureMetaStart fija mCaptureMergeIdentity con el timestamp del
+                // primer frame; si reenviamos antes, el frame 1 se cuenta bajo identidad 0.
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args != null && param.args.length >= 3
+                                && param.args[1] instanceof Number && param.args[2] instanceof Number) {
                             long ts = ((Number) param.args[1]).longValue();
                             long frame = ((Number) param.args[2]).longValue();
-                            frameTs.put(frame, ts);
                             Object[] p = pending.remove(frame);
                             if (p != null) {
                                 forward(p[0], p[1], p[2], ts, frame, forceTs);
                             }
                         }
                     } catch (Throwable t) {
-                        Log.e(LT, "NIGHTDIAG3 started fallo: " + t);
+                        Log.e(LT, "NIGHTDIAG3 started2 fallo: " + t);
                     }
                 }
             });
@@ -451,7 +465,7 @@ public class HookEntry implements IXposedHookLoadPackage {
                     }
                 }
             }).size();
-            Log.e(LT, "hook reenvio meta parcial (v0.15) en " + n2 + " metodo(s)");
+            Log.e(LT, "hook reenvio meta parcial (v0.17) en " + n2 + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho reenvio meta parcial: " + t);
         }
