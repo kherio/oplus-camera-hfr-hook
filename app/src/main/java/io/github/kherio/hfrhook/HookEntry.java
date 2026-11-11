@@ -274,5 +274,37 @@ public class HookEntry implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             Log.e(LT, "no engancho v6.f1.p: " + t);
         }
+
+        // v0.10: el macro automatico se queda sin guardar la foto (la rafaga RAW de la
+        // ultra gran angular no llega nunca a APS). La app lee estas banderas con
+        // CameraConfig.<metodo>(String clave[, boolean]) y asume "true" si faltan, asi que
+        // las forzamos a false.
+        try {
+            Class<?> cc = XposedHelpers.findClass("com.oplus.camera.configure.CameraConfig", lpparam.classLoader);
+            int n = 0;
+            for (java.lang.reflect.Method m : cc.getDeclaredMethods()) {
+                Class<?>[] p = m.getParameterTypes();
+                if (m.getReturnType() == boolean.class && p.length >= 1 && p[0] == String.class
+                        && java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            try {
+                                Object k = param.args[0];
+                                if (k instanceof String && ((String) k).startsWith("com.oplus.feature.macro.mode.support")) {
+                                    param.setResult(Boolean.FALSE);
+                                }
+                            } catch (Throwable t) {
+                                Log.e(LT, "macro off fallo: " + t);
+                            }
+                        }
+                    });
+                    n++;
+                }
+            }
+            Log.e(LT, "hook CameraConfig (macro off) en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho CameraConfig: " + t);
+        }
     }
 }
