@@ -509,6 +509,25 @@ public class HookEntry implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             Log.e(LT, "no engancho reenvio meta parcial: " + t);
         }
+        // v0.21: el modo Noche manual (algoritmo de 8 frames) no funciona en esta ROM porque el HAL no
+        // entrega los resultados completos. La fabrica de modos zg.h3.a(String) crea el objeto del modo
+        // a partir de su nombre: cuando piden "night" devolvemos el modo "common" (foto normal).
+        try {
+            Class<?> fac = XposedHelpers.findClass("zg.h3", lpparam.classLoader);
+            int nf = XposedBridge.hookAllMethods(fac, "a", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (param.args != null && param.args.length == 1 && "night".equals(param.args[0])) {
+                        param.args[0] = "common";
+                        Log.e(LT, "NIGHT -> common (foto normal)");
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook fabrica de modos night->common en " + nf + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho la fabrica de modos: " + t);
+        }
+
         hookMergeDiag(lpparam.classLoader);
     }
 
