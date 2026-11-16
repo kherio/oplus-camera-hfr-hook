@@ -94,6 +94,38 @@ public class HookEntry implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + "fallo al enganchar: " + t);
         }
         hookPinch(lpparam);
+        hookVideoOpMode(lpparam);
+    }
+
+    private static final int OPMODE_VIDEO_NO_EIS = 33547; // 0x830B: sin entrada en EISTypeMatching
+    private static final int OPMODE_VIDEO_EIS = 32779;    // 0x800B: 720P/1080P/4K 30fps EIS3
+    private static long lastOp;
+
+    /** Video normal: pide el modo de operacion 0x800B (con EIS3 en el HAL) en lugar de 0x830B. */
+    private void hookVideoOpMode(LoadPackageParam lpparam) {
+        String[] classes = {"com.oplus.camera.module.a", "mh.c"};
+        for (String cn : classes) {
+            try {
+                Class<?> c = XposedHelpers.findClass(cn, lpparam.classLoader);
+                int n = XposedBridge.hookAllMethods(c, "k8", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Object r = param.getResult();
+                        if (r instanceof Integer && ((Integer) r) == OPMODE_VIDEO_NO_EIS) {
+                            param.setResult(Integer.valueOf(OPMODE_VIDEO_EIS));
+                            long now = System.currentTimeMillis();
+                            if (now - lastOp > 1000) {
+                                lastOp = now;
+                                Log.e(LT, "k8: operation mode 0x830B -> 0x800B (EIS)");
+                            }
+                        }
+                    }
+                }).size();
+                Log.e(LT, "hook " + cn + ".k8 en " + n + " metodo(s)");
+            } catch (Throwable t) {
+                Log.e(LT, "no engancho " + cn + ".k8: " + t);
+            }
+        }
     }
 
     private static String safe(Object o, String method) {
