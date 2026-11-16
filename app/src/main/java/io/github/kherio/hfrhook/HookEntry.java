@@ -95,6 +95,7 @@ public class HookEntry implements IXposedHookLoadPackage {
         }
         hookPinch(lpparam);
         hookVideoOpMode(lpparam);
+        hookOpModeSink(lpparam);
     }
 
     private static final int OPMODE_VIDEO_NO_EIS = 33547; // 0x830B: sin entrada en EISTypeMatching
@@ -125,6 +126,29 @@ public class HookEntry implements IXposedHookLoadPackage {
             } catch (Throwable t) {
                 Log.e(LT, "no engancho " + cn + ".k8: " + t);
             }
+        }
+    }
+
+    /** Sumidero: hh.k.K(int) fija el modo de operacion de la sesion; cambia 0x830B por 0x800B. */
+    private void hookOpModeSink(LoadPackageParam lpparam) {
+        try {
+            Class<?> c = XposedHelpers.findClass("hh.k", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(c, "K", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (param.args != null && param.args.length == 1 && param.args[0] instanceof Integer) {
+                        int v = (Integer) param.args[0];
+                        Log.e(LT, "hh.k.K(" + v + ")");
+                        if (v == OPMODE_VIDEO_NO_EIS) {
+                            param.args[0] = Integer.valueOf(OPMODE_VIDEO_EIS);
+                            Log.e(LT, "hh.k.K: 0x830B -> 0x800B (EIS)");
+                        }
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook hh.k.K en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho hh.k.K: " + t);
         }
     }
 
