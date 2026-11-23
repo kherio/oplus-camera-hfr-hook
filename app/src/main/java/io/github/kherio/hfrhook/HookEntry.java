@@ -100,6 +100,7 @@ public class HookEntry implements IXposedHookLoadPackage {
         hookStartPreview(lpparam);
         hookTeleThreshold(lpparam);
         hookZoomPresenter(lpparam);
+        hookPreviewPost(lpparam);
     }
 
     private static final int OPMODE_VIDEO_NO_EIS = 33547; // 0x830B: sin entrada en EISTypeMatching
@@ -200,6 +201,9 @@ public class HookEntry implements IXposedHookLoadPackage {
     }
 
     private static volatile float lastParamZoom = -1f;
+    private static volatile float lastL3 = -1f;
+    private static long lastL3Log;
+    private static long lastWL;
 
     /** Diagnostico: en Camera2StateMachineImpl.startPreview lee el zoom de Parameter y, si cae a <=1.0 desde >1.9, imprime quien lo pidio. */
     private void hookStartPreview(LoadPackageParam lpparam) {
@@ -291,9 +295,12 @@ public class HookEntry implements IXposedHookLoadPackage {
                             return;
                         }
                         float z = (Float) param.args[0];
-                        if (z < 1.9f) {
+                        lastL3 = z;
+                        long nowL3 = System.currentTimeMillis();
+                        if (z < 1.9f || nowL3 - lastL3Log < 500) {
                             return;
                         }
+                        lastL3Log = nowL3;
                         Object cfg = null;
                         Object a = XposedHelpers.getObjectField(param.thisObject, "a");
                         if (a != null) {
@@ -312,6 +319,36 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "hook ig.c0.L3 en " + n + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho ig.c0.L3: " + t);
+        }
+    }
+
+    /** Diagnostico: quien llama a v6.w0.L (reinicio de la vista previa) cuando el zoom ya pasa de 1.95. */
+    private void hookPreviewPost(LoadPackageParam lpparam) {
+        try {
+            Class<?> w0 = XposedHelpers.findClass("v6.w0", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(w0, "L", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        long now = System.currentTimeMillis();
+                        if (lastL3 < 1.95f || now - lastWL < 1500) {
+                            return;
+                        }
+                        lastWL = now;
+                        StackTraceElement[] st = new Throwable().getStackTrace();
+                        StringBuilder sb = new StringBuilder("v6.w0.L (zoom=" + lastL3 + ") llamado desde:");
+                        for (int i = 1; i < st.length && i < 28; i++) {
+                            sb.append("\n    ").append(st[i]);
+                        }
+                        Log.e(LT, sb.toString());
+                    } catch (Throwable t) {
+                        Log.e(LT, "w0.L diag fallo: " + t);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook v6.w0.L en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho v6.w0.L: " + t);
         }
     }
 
