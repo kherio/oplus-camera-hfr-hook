@@ -101,6 +101,7 @@ public class HookEntry implements IXposedHookLoadPackage {
         hookTeleThreshold(lpparam);
         hookZoomPresenter(lpparam);
         hookPreviewPost(lpparam);
+        hookZoomMap(lpparam);
     }
 
     private static final int OPMODE_VIDEO_NO_EIS = 33547; // 0x830B: sin entrada en EISTypeMatching
@@ -349,6 +350,51 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "hook v6.w0.L en " + n + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho v6.w0.L: " + t);
+        }
+    }
+
+    private static long lastF;
+
+    /**
+     * hg.g.f(float): convierte el zoom mostrado en el zoom real. Con el ultraestabilizador, a partir de 2x
+     * devuelve un valor que acaba en zoomRatio 1.0. Se registra y, si devuelve <= 1.0 con zoom >= 2, se devuelve el zoom pedido.
+     */
+    private void hookZoomMap(LoadPackageParam lpparam) {
+        try {
+            Class<?> g = XposedHelpers.findClass("hg.g", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(g, "f", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args == null || param.args.length != 1 || !(param.args[0] instanceof Float)
+                                || !(param.getResult() instanceof Float)) {
+                            return;
+                        }
+                        float in = (Float) param.args[0];
+                        float out = (Float) param.getResult();
+                        if (in < 1.9f) {
+                            return;
+                        }
+                        long now = System.currentTimeMillis();
+                        if (now - lastF > 400) {
+                            lastF = now;
+                            Object cfg = XposedHelpers.getObjectField(param.thisObject, "i");
+                            Log.e(LT, "hg.g.f(" + in + ") = " + out + " eis=" + EIS_ACTIVE
+                                    + (cfg == null ? " cfg=null" : " D0=" + field(cfg, "D0") + " E0=" + field(cfg, "E0")
+                                    + " F0=" + field(cfg, "F0") + " B=" + field(cfg, "B") + " m=" + field(cfg, "m")
+                                    + " n=" + field(cfg, "n") + " o=" + field(cfg, "o") + " l0=" + field(cfg, "l0")));
+                        }
+                        if (EIS_ACTIVE && in >= 2.0f && out <= 1.0f) {
+                            param.setResult(Float.valueOf(in));
+                        }
+                    } catch (Throwable t) {
+                        Log.e(LT, "hg.g.f diag fallo: " + t);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook hg.g.f en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho hg.g.f: " + t);
         }
     }
 
