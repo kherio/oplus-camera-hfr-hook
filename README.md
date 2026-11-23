@@ -16,14 +16,18 @@ OxygenOS' framework is modified to allow it; AOSP's is not. The module turns
 `SurfaceUtils.checkHighSpeedSurfaceFormat` and `checkConstrainedHighSpeedSurfaces` into no-ops, only inside the
 `com.oplus.camera` process.
 
-### 2. Pinch-to-zoom with super-steady video (up to 2x, capped at 1.99x)
-With super-steady video the app refuses to start the pinch gesture. The module:
-- makes `jg.b2.h()` return true while a pinch is being handled (`jg.b2$a.a` / `jg.b2$a.c`), and
-- lowers the pinch limit (`jg.b2` fields `k` and `y`, 5.0 by default in this mode) to 1.99 (just below the 2.0x lens switch) while the super-EIS
-  flag is set (the flag is read from `v6.f1.p(w6.c)`), and puts the original values back when you leave the mode.
+### 2. Zoom up to 5x with super-steady video
+With super-steady video the stock app refuses the pinch gesture and, even when it is forced, drops the zoom back
+to 1x when it reaches 2x. The module:
+- makes `jg.b2.h()` return true while a pinch is being handled (`jg.b2$a.a` / `jg.b2$a.c`),
+- keeps the pinch limit (`jg.b2` fields `k` and `y`) at 5.0 while the super-EIS flag is set (the flag is read from
+  `v6.f1.p(w6.c)`), and puts the original values back when you leave the mode, and
+- fixes the zoom mapping `hg.g.f(float)`, which returned 1.0 from 2x up in this mode; that made the app restart the
+  preview with `zoomRatio = 1.0` and ignore every later zoom change. With the fix the zoom ratio keeps reaching
+  the camera HAL up to 5x, also while recording.
 
-It needs the patched APK from oplus-camera-port (`force_true.py ... 'Lm5/e;->c()Z'`). Above 2x the camera
-pipeline does not zoom in this mode.
+It needs the patched APK from oplus-camera-port (`force_true.py ... 'Lm5/e;->c()Z'`). Between 0.6x and 1x there is
+no change because this mode only uses the main camera.
 
 Class names are obfuscated and only valid for the camera app of OxygenOS 16.0.5.1301 (CPH2449).
 It does not touch the ROM or any other app.
@@ -50,7 +54,7 @@ module does not try to. What was found, in case somebody wants to take it furthe
 v0.22 removes all of the experimental Night hooks and diagnostics.
 
 ## Logs
-Tag `HfrHook` (shown in LSPosed and logcat). The zoom hooks are throttled, but they log at error level.
+Tag `HfrHook` (shown in LSPosed and logcat). The module logs only failures.
 ```
 adb logcat -d | findstr HfrHook
 ```
