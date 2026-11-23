@@ -99,6 +99,7 @@ public class HookEntry implements IXposedHookLoadPackage {
         hookZoomRequest(lpparam);
         hookStartPreview(lpparam);
         hookTeleThreshold(lpparam);
+        hookZoomPresenter(lpparam);
     }
 
     private static final int OPMODE_VIDEO_NO_EIS = 33547; // 0x830B: sin entrada en EISTypeMatching
@@ -254,6 +255,10 @@ public class HookEntry implements IXposedHookLoadPackage {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     try {
+                        if (param.args != null && param.args.length == 2 && param.args[0] instanceof String
+                                && ((String) param.args[0]).contains("tele")) {
+                            Log.e(LT, "CameraConfig.g(" + param.args[0] + ") = " + param.getResult() + " eisActive=" + EIS_ACTIVE);
+                        }
                         if (!EIS_ACTIVE || param.args == null || param.args.length != 2
                                 || !"com.oplus.ultra.tele.zoom.value".equals(param.args[0])) {
                             return;
@@ -271,6 +276,42 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "hook CameraConfig.g en " + n + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho CameraConfig.g: " + t);
+        }
+    }
+
+    /** Diagnostico: ig.c0.L3(float,boolean) (ZoomPresenter) con zoom >= 1.9. */
+    private void hookZoomPresenter(LoadPackageParam lpparam) {
+        try {
+            Class<?> c0 = XposedHelpers.findClass("ig.c0", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(c0, "L3", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args == null || param.args.length != 2 || !(param.args[0] instanceof Float)) {
+                            return;
+                        }
+                        float z = (Float) param.args[0];
+                        if (z < 1.9f) {
+                            return;
+                        }
+                        Object cfg = null;
+                        Object a = XposedHelpers.getObjectField(param.thisObject, "a");
+                        if (a != null) {
+                            cfg = XposedHelpers.callMethod(a, "h6");
+                        }
+                        Log.e(LT, "ig.c0.L3 zoom=" + z + " arg2=" + param.args[1] + " eis=" + EIS_ACTIVE
+                                + " h6.o=" + (cfg == null ? "null" : field(cfg, "o"))
+                                + " h6.m=" + (cfg == null ? "null" : field(cfg, "m"))
+                                + " h6.n=" + (cfg == null ? "null" : field(cfg, "n"))
+                                + " h6.F0=" + (cfg == null ? "null" : field(cfg, "F0")));
+                    } catch (Throwable t) {
+                        Log.e(LT, "L3 diag fallo: " + t);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook ig.c0.L3 en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho ig.c0.L3: " + t);
         }
     }
 
