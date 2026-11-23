@@ -98,6 +98,7 @@ public class HookEntry implements IXposedHookLoadPackage {
         hookOpModeSink(lpparam);
         hookZoomRequest(lpparam);
         hookStartPreview(lpparam);
+        hookTeleThreshold(lpparam);
     }
 
     private static final int OPMODE_VIDEO_NO_EIS = 33547; // 0x830B: sin entrada en EISTypeMatching
@@ -238,6 +239,38 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "hook Camera2StateMachineImpl.startPreview en " + n + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho startPreview: " + t);
+        }
+    }
+
+    /**
+     * ig.c0.L3 cambia a la lente tele (pref_none_sat_ultra_tele_key) cuando el zoom llega a
+     * "com.oplus.ultra.tele.zoom.value" (2.0 por defecto), lo que reinicia la vista previa con zoom 1.0.
+     * Con el ultraestabilizador activo se sube ese umbral para seguir con el recorte.
+     */
+    private void hookTeleThreshold(LoadPackageParam lpparam) {
+        try {
+            Class<?> cc = XposedHelpers.findClass("com.oplus.camera.configure.CameraConfig", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(cc, "g", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        if (!EIS_ACTIVE || param.args == null || param.args.length != 2
+                                || !"com.oplus.ultra.tele.zoom.value".equals(param.args[0])) {
+                            return;
+                        }
+                        Object r = param.getResult();
+                        if (r instanceof Float && ((Float) r) < 100f) {
+                            param.setResult(Float.valueOf(100f));
+                            Log.e(LT, "CameraConfig.g(ultra.tele.zoom.value): " + r + " -> 100.0");
+                        }
+                    } catch (Throwable t) {
+                        Log.e(LT, "tele threshold fallo: " + t);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook CameraConfig.g en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho CameraConfig.g: " + t);
         }
     }
 
