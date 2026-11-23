@@ -97,6 +97,7 @@ public class HookEntry implements IXposedHookLoadPackage {
         hookVideoOpMode(lpparam);
         hookOpModeSink(lpparam);
         hookZoomRequest(lpparam);
+        hookStartPreview(lpparam);
     }
 
     private static final int OPMODE_VIDEO_NO_EIS = 33547; // 0x830B: sin entrada en EISTypeMatching
@@ -193,6 +194,50 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "hook CaptureRequest.Builder.set en " + n + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho Builder.set: " + t);
+        }
+    }
+
+    private static volatile float lastParamZoom = -1f;
+
+    /** Diagnostico: en Camera2StateMachineImpl.startPreview lee el zoom de Parameter y, si cae a <=1.0 desde >1.9, imprime quien lo pidio. */
+    private void hookStartPreview(LoadPackageParam lpparam) {
+        try {
+            final Class<?> keys = XposedHelpers.findClass("com.oplus.ocs.camera.metadata.UPreviewKeys", lpparam.classLoader);
+            java.lang.reflect.Field kf = keys.getDeclaredField("KEY_ZOOM_RATIO");
+            kf.setAccessible(true);
+            final Object zoomKey = kf.get(null);
+            Class<?> sm = XposedHelpers.findClass("com.oplus.ocs.camera.producer.device.Camera2StateMachineImpl", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(sm, "startPreview", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args == null || param.args.length != 2 || param.args[1] == null) {
+                            return;
+                        }
+                        Object p = param.args[1];
+                        boolean has = Boolean.TRUE.equals(XposedHelpers.callMethod(p, "containCustomKey", zoomKey));
+                        if (!has) {
+                            return;
+                        }
+                        float v = ((Number) XposedHelpers.callMethod(p, "get", zoomKey)).floatValue();
+                        float prev = lastParamZoom;
+                        lastParamZoom = v;
+                        if (v <= 1.0f && prev > 1.9f) {
+                            StackTraceElement[] st = new Throwable().getStackTrace();
+                            StringBuilder sb = new StringBuilder("startPreview con zoom " + prev + " -> " + v + " pedido desde:");
+                            for (int i = 1; i < st.length && i < 30; i++) {
+                                sb.append("\n    ").append(st[i]);
+                            }
+                            Log.e(LT, sb.toString());
+                        }
+                    } catch (Throwable t) {
+                        Log.e(LT, "startPreview diag fallo: " + t);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook Camera2StateMachineImpl.startPreview en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho startPreview: " + t);
         }
     }
 
