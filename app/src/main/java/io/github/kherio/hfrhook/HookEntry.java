@@ -96,6 +96,7 @@ public class HookEntry implements IXposedHookLoadPackage {
         hookPinch(lpparam);
         hookVideoOpMode(lpparam);
         hookOpModeSink(lpparam);
+        hookZoomRequest(lpparam);
     }
 
     private static final int OPMODE_VIDEO_NO_EIS = 33547; // 0x830B: sin entrada en EISTypeMatching
@@ -149,6 +150,49 @@ public class HookEntry implements IXposedHookLoadPackage {
             Log.e(LT, "hook hh.k.K en " + n + " metodo(s)");
         } catch (Throwable t) {
             Log.e(LT, "no engancho hh.k.K: " + t);
+        }
+    }
+
+    private static volatile float lastZoomReq = -1f;
+
+    /** Diagnostico: registra los cambios de CONTROL_ZOOM_RATIO y, si baja de >1.9 a 1.0, la pila de llamadas. */
+    private void hookZoomRequest(LoadPackageParam lpparam) {
+        try {
+            Class<?> b = XposedHelpers.findClass("android.hardware.camera2.CaptureRequest$Builder", lpparam.classLoader);
+            int n = XposedBridge.hookAllMethods(b, "set", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.args == null || param.args.length != 2 || param.args[0] == null) {
+                            return;
+                        }
+                        Object key = param.args[0];
+                        if (!"android.control.zoomRatio".equals(String.valueOf(XposedHelpers.callMethod(key, "getName")))) {
+                            return;
+                        }
+                        float v = ((Number) param.args[1]).floatValue();
+                        float prev = lastZoomReq;
+                        if (Math.abs(v - prev) < 0.05f) {
+                            return;
+                        }
+                        lastZoomReq = v;
+                        Log.e(LT, "zoomRatio request " + prev + " -> " + v);
+                        if (v <= 1.0f && prev > 1.9f) {
+                            StackTraceElement[] st = new Throwable().getStackTrace();
+                            StringBuilder sb = new StringBuilder("zoomRatio cae a 1.0 desde:");
+                            for (int i = 1; i < st.length && i < 22; i++) {
+                                sb.append("\n    ").append(st[i]);
+                            }
+                            Log.e(LT, sb.toString());
+                        }
+                    } catch (Throwable t) {
+                        Log.e(LT, "zoom diag fallo: " + t);
+                    }
+                }
+            }).size();
+            Log.e(LT, "hook CaptureRequest.Builder.set en " + n + " metodo(s)");
+        } catch (Throwable t) {
+            Log.e(LT, "no engancho Builder.set: " + t);
         }
     }
 
